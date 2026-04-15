@@ -9,6 +9,7 @@ add_executable(kwantrace26 main.cpp
         include/eigen/Eigen/Dense
         include/kwantrace/pdvector.hpp
         include/kwantrace/transformation.hpp
+        include/kwantrace/ray.hpp
 )
 
 target_include_directories(kwantrace26 PRIVATE include)
