@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 26)
 
 add_executable(kwantrace26 main.cpp
         include/kwantrace/kwantrace.hpp
+        include/kwantrace/math.hpp
+        include/eigen/Eigen/Dense
 )
 
 target_include_directories(kwantrace26 PRIVATE include)
