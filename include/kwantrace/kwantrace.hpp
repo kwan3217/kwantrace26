@@ -5,4 +5,5 @@
 #define KWANTRACE_HPP
 
 #include "math.hpp"
+#include "pdvector.hpp"
 #endif // KWANTRACE_HPP
