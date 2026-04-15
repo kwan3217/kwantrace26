@@ -2,7 +2,7 @@
 // Created by chrisj on 4/14/26.
 //
 
-#include <eigen3/Eigen/Dense> //for matrices and vectors
+#include <eigen/Eigen/Dense> //for matrices and vectors
 
 namespace kwantrace {
   /**
