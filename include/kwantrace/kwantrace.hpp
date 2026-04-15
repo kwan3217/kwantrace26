@@ -6,4 +6,6 @@
 
 #include "math.hpp"
 #include "pdvector.hpp"
+#include "transformation.hpp"
+
 #endif // KWANTRACE_HPP

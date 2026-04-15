@@ -2,12 +2,9 @@
 // Created by chrisj on 4/14/26.
 //
 
-export module kwantrace:transformation;
+#include <eigen/Eigen/Dense> //for matrices and vectors
 
-import :pdvector;
-#include <eigen3/Eigen/Dense> //for matrices and vectors
-
-export namespace kwantrace {
+namespace kwantrace {
     /** Represent a generator of an arbitrary affine transformation. It can have any members it needs,
  * but must be able to take its members and generate a Matrix4d on demand. Members are intended
  * to be changed (IE properties).
@@ -40,47 +37,19 @@ export namespace kwantrace {
     virtual ~Transformation()=default; ///<Allow there to be subclasses
   };
 
-  /** Transformation with a scalar parameter */
-  class ScalarTransformation:public Transformation {
-  private:
-    double amount; ///< Parameter value.
-  public:
-    /** Construct a new transformation with a scalar parameter.
-     *
-     * @param Lamount Initial parameter value
-     */
-    ScalarTransformation(double Lamount=0):amount(Lamount) {};
-  };
-
-  /** Transformation with a vector parameter. */
-  class VectorTransformation:public Transformation {
-  private:
-    Eigen::Vector3d amount; ///< Vector parameter for transform
-  public:
-    /**
-     * Initialize a vector transformation.
-     * @param Lamount Initial value for vector transform parameter
-     */
-    VectorTransformation(const Eigen::Vector3d Lamount=Eigen::Vector3d::Zero()):amount(Lamount) {};
-    /**
-     * Initialize a vector transformation.
-     * @param x Initial X component
-     * @param y Initial Y component
-     * @param z Initial Z component
-     */
-    VectorTransformation(double x, double y, double z):amount(x,y,z) {};
-  };
-
   /** Represent a translation. The vector represents the coordinates of origin of the body frame, in the world frame. */
-  class Translation:public VectorTransformation {
+  class Translation:public Transformation {
   public:
-    using VectorTransformation::VectorTransformation;
-    virtual Eigen::Matrix4d matrix() const override {
+    Position offset;
+    static Eigen::Matrix4d calc(Position Loffset) {
       Eigen::Matrix4d result=Eigen::Matrix4d::Identity();
-      result(0,3)=amount.x();
-      result(1,3)=amount.y();
-      result(2,3)=amount.z();
+      result(0,3)=Loffset.x();
+      result(1,3)=Loffset.y();
+      result(2,3)=Loffset.z();
       return result;
+    }
+    virtual Eigen::Matrix4d matrix() const override {
+      return calc(offset);
     }
   };
 
@@ -92,46 +61,35 @@ export namespace kwantrace {
    * POV-Ray where you get a warning if you do that.
    *
    */
-  class Scaling:public VectorTransformation {
+  class Scaling:public Transformation {
   public:
-    using VectorTransformation::VectorTransformation;
-    virtual Eigen::Matrix4d matrix() const override {
+    Direction scale;
+    static Eigen::Matrix4d calc(Direction Lscale) {
       Eigen::Matrix4d result=Eigen::Matrix4d::Identity();
-      result(0,0)=amount.x()==0?1:amount.x();
-      result(1,1)=amount.y()==0?1:amount.y();
-      result(2,2)=amount.z()==0?1:amount.z();
+      result(0,0)=Lscale.x()==0?1:Lscale.x();
+      result(1,1)=Lscale.y()==0?1:Lscale.y();
+      result(2,2)=Lscale.z()==0?1:Lscale.z();
       return result;
+    }
+    virtual Eigen::Matrix4d matrix() const override {
+      return calc(scale);
     }
   };
 
   /** Represent a uniform scaling in all directions. You could use
    * a vector Scaling, but then you would have to change all three
    * components of the scaling vector to keep the scaling uniform. */
-  class UniformScaling:public ScalarTransformation {
+  class UniformScaling:public Transformation {
   public:
-    using ScalarTransformation::ScalarTransformation;
+    double scale;
     virtual Eigen::Matrix4d matrix() const override {
       Eigen::Matrix4d result=Eigen::Matrix4d::Identity();
-      result(0,0)=amount==0?1:amount;
-      result(1,1)=amount==0?1:amount;
-      result(2,2)=amount==0?1:amount;
+      result(0,0)=scale==0?1:scale;
+      result(1,1)=scale==0?1:scale;
+      result(2,2)=scale==0?1:scale;
       return result;
     }
   };
-  /** Calculate the rotation matrix around a body axis
-   *
-   * @param axis Axis index, x=0, y=1, z=2
-   * @param angle Angle to rotate in radians
-   * @return Rotation matrix representing a physical rotation of an object about an axis by the given angle in a right-handed sense.
-   */
-  Eigen::Matrix4d rot(int axis, double angle) {
-    Eigen::Matrix4d result=Eigen::Matrix4d::Identity();
-    double c = cos(angle);
-    double s = sin(angle);
-    result((axis+1)%3, (axis+1)%3)= c; result((axis+1)%3, (axis+2)%3)= -s;
-    result((axis+2)%3, (axis+1)%3)= s; result((axis+2)%3, (axis+2)%3)=  c;
-    return result;
-  }
 
   /** Represents a right-handed physical rotation around a coordinate frame axis.
    * Right-handed means if you wrap the fingers of your *right* hand around the
@@ -144,26 +102,39 @@ export namespace kwantrace {
    * around the z axis, the object will then be pointed down the y axis.
    *
    * @tparam axis Axis to rotate around -- x=0, y=1, z=2
+   *
+   * Note -- all angles in public interface for this class is degrees -- transformation to radians
+   *         is handled internally. angle may be set and reset in degrees.
    */
   template<int axis>
-  class RotateScalar:public ScalarTransformation {
+  class RotateScalar:public Transformation {
   public:
-    using ScalarTransformation::ScalarTransformation;
+    double angle; ///< rotation amount in degrees
     /** Construct a rotation, optionally specifying the angle in degrees
      *
-     * @param Lamount Angle to rotate
-     * @param isDegrees If true, Lamount is specified in degrees. Otherwise it is specified in radians.
+     * @param Lamount Angle to rotate in degrees
      */
-    RotateScalar(double Lamount, bool isDegrees=true):ScalarTransformation(isDegrees?deg2rad(Lamount):Lamount) {};
-    virtual Eigen::Matrix4d matrix() const override {
-      return rot(axis,amount);
+    /** Calculate the rotation matrix around a body axis
+     *
+     * @param angle Angle to rotate in radians
+     * @return Rotation matrix representing a physical rotation of an object about an axis by the given angle in a right-handed sense.
+     */
+    static Eigen::Matrix4d calc(double angle) {
+      Eigen::Matrix4d result=Eigen::Matrix4d::Identity();
+      double c = cos(deg2rad(angle));
+      double s = sin(deg2rad(angle));
+      result((axis+1)%3, (axis+1)%3)= c; result((axis+1)%3, (axis+2)%3)= -s;
+      result((axis+2)%3, (axis+1)%3)= s; result((axis+2)%3, (axis+2)%3)=  c;
+      return result;
     }
-    double getd() const {return rad2deg(amount);}        ///< Get the parameter, assuming it is an angle. @return Parameter angle in degrees
-    void setd(double Lamount) {amount=deg2rad(Lamount);} ///< Set the parameter, assuming it is an angle. @param[in] Lamount new parameter angle in degrees
+    RotateScalar(double Langle):angle(Langle) {};
+    virtual Eigen::Matrix4d matrix() const override {
+      return calc(angle);
+    }
   };
-  typedef RotateScalar<0> RotateX;  ///< Specialized RotateScalar for X axis
-  typedef RotateScalar<1> RotateY;  ///< Specialized RotateScalar for Y axis
-  typedef RotateScalar<2> RotateZ;  ///< Specialized RotateScalar for Z axis
+  using RotateX=RotateScalar<0>;  ///< Specialized RotateScalar for X axis
+  using RotateY=RotateScalar<1>;  ///< Specialized RotateScalar for Y axis
+  using RotateZ=RotateScalar<2>;  ///< Specialized RotateScalar for Z axis
 
   /** Represents a right-handed physical rotation around each coordinate frame axis in turn.
    * This is in a sense an Euler angle rotation, but in a rather inflexible way -- if you
@@ -176,43 +147,27 @@ export namespace kwantrace {
    *
    * This emulates a POV-Ray rotate with a vector parameter (except for being right-handed rotations).
    */
-  class RotateVector:public VectorTransformation {
+  class RotateVector:public Transformation {
   public:
-    using VectorTransformation::VectorTransformation;
+    Eigen::Vector3d angle; ///< Angle in degrees about each principal axis
     /** Construct a RotateVector, optionally specifying the angles in degrees */
     RotateVector(
-      double Lx, ///< Amount to rotate around X axis
-      double Ly, ///< Amount to rotate around Y axis
-      double Lz, ///< Amount to rotate around Z axis
-      bool isDegrees=true  ///< True if Lx, Ly, and Lz are specified in degrees
-    ):VectorTransformation(
-      isDegrees?deg2rad(Lx):Lx,
-      isDegrees?deg2rad(Ly):Ly,
-      isDegrees?deg2rad(Lz):Lz) {
+      double Lx, ///< Amount to rotate around X axis in degrees
+      double Ly, ///< Amount to rotate around Y axis in degrees
+      double Lz  ///< Amount to rotate around Z axis in degrees
+    ):angle(Lx,Ly,Lz) {
     };
     /** Construct a RotateVector, optionally specifying the angles in degrees */
     RotateVector(
-      const Eigen::Vector3d Lamount, ///< Amount to rotate around each axis
-      bool isDegrees                 ///< True if components of Lamount are in degrees
-    ):VectorTransformation(
-      isDegrees?deg2rad(Lamount.x()):Lamount.x(),
-      isDegrees?deg2rad(Lamount.y()):Lamount.y(),
-      isDegrees?deg2rad(Lamount.z()):Lamount.z()) {
+      const Eigen::Vector3d Langle ///< Amount to rotate around each axis
+    ):angle(Langle) {
     };
     virtual Eigen::Matrix4d matrix() const override {
-      Eigen::Matrix4d result=rot(0,amount.x());
-      result=rot(1,amount.y())*result;
-      result=rot(2,amount.z())*result;
+      Eigen::Matrix4d result=RotateX::calc(angle.x());
+      result=RotateY::calc(angle.y())*result;
+      result=RotateZ::calc(angle.z())*result;
       return result;
     }
-    double getXd() const {return rad2deg(getX());} ///< Get the X component of the rotation in degrees @return value of X component
-    void setXd(double Lx) {setX(deg2rad(Lx));}  ///< Set the X component of the rotation in degrees @param[in] Lx value of X component
-    double getYd() const {return rad2deg(getY());} ///< Get the Y component of the rotation in degrees @return value of Y component
-    void setYd(double Ly) {setX(deg2rad(Ly));}  ///< Set the Y component of the rotation in degrees @param[in] Ly value of Y component
-    double getZd() const {return rad2deg(getZ());} ///< Get the Z component of the rotation in degrees @return value of Z component
-    void setZd(double Lz) {setZ(deg2rad(Lz));}  ///< Set the Z component of the rotation in degrees @param[in] Lz value of Z component
-    Eigen::Vector3d getVd() const {return Eigen::Vector3d(getXd(),getYd(),getZd());} ///< Get the rotation in degrees @return copy of rotation vector converted to degrees
-    void setVd(const Eigen::Vector3d Lamount) {setXd(Lamount.x());setYd(Lamount.y());setZd(Lamount.z());} ///< Set the parameter @param[in] Lamount New value of the parameter in degrees
   };
 
   /** Represent the Point-Toward transformation. This rotates an object such that
@@ -222,33 +177,24 @@ export namespace kwantrace {
    *
    */
   class PointToward:public Transformation {
-  private:
-    Eigen::Vector3d p_b; ///< Point vector in body frame
-    Eigen::Vector3d p_r; ///< Point vector in world frame
-    Eigen::Vector3d t_b; ///< Toward vector in body frame
-    Eigen::Vector3d t_r; ///< Toward vector in world frame
   public:
+    Direction p_b; ///< Point vector in body frame
+    Direction p_r; ///< Point vector in world frame
+    Direction t_b; ///< Toward vector in body frame
+    Direction t_r; ///< Toward vector in world frame
     /** Construct a Point-Toward transformation */
     PointToward(
-            const Eigen::Vector3d &Lp_b, ///< point vector in body frame
-            const Eigen::Vector3d &Lp_r, ///< point vector in world frame
-            const Eigen::Vector3d &Lt_b, ///< toward vector in body frame
-            const Eigen::Vector3d &Lt_r  ///< toward vector in world frame
+            const Direction &Lp_b, ///< point vector in body frame
+            const Direction &Lp_r, ///< point vector in world frame
+            const Direction &Lt_b, ///< toward vector in body frame
+            const Direction &Lt_r  ///< toward vector in world frame
     ) : p_b(Lp_b), p_r(Lp_r), t_b(Lt_b), t_r(Lt_r) {}
-    Eigen::Vector3d getPb() const                     {return p_b;} ///<Get copy of p_b vector @return copy of p_b vector
-               void setPb(const Eigen::Vector3d& Lpb) {p_b=Lpb;}    ///<Set p_b vector @param[in] Lpb New p_b vector
-    Eigen::Vector3d getPr() const                     {return p_r;} ///<Get copy of p_b vector @return copy of p_r vector
-               void setPr(const Eigen::Vector3d& Lpr) {p_b=Lpr;}    ///<Set p_b vector @param[in] Lpr New p_r vector
-    Eigen::Vector3d getTb() const                     {return t_b;} ///<Get copy of t_b vector @return copy of t_b vector
-               void setTb(const Eigen::Vector3d& Ltb) {p_b=Ltb;}    ///<Set t_b vector @param[in] Ltb New t_b vector
-    Eigen::Vector3d getTr() const                     {return t_r;} ///<Get copy of t_r vector @return copy of t_r vector
-               void setTr(const Eigen::Vector3d& Ltr) {p_b=Ltr;}    ///<Set t_r vector @param[in] Ltr New t_r vector
     /**
      * Calculate the matrix representing this Point-Toward transformation.
      * @return Matrix representing the point-toward transformation.
      */
     virtual Eigen::Matrix4d matrix() const override {
-      return calcPointToward(p_b, p_r, t_b, t_r);
+      return calc(p_b, p_r, t_b, t_r);
     }
     /** Do the actual work of calculating a point-toward transformation
      *
@@ -336,7 +282,7 @@ export namespace kwantrace {
      * And that's the solution. Note that if you need \f$\MM{M}{_{br}}\f$, it is also a transpose
      * since this answer is still an orthonormal (IE rotation) matrix.
      */
-    static Eigen::Matrix4d calcPointToward(
+    static Eigen::Matrix4d calc(
       Direction p_b,
       Direction p_r,
       Direction t_b,
@@ -446,7 +392,7 @@ export namespace kwantrace {
       std::cout << "B:  "<< std::endl << B << std::endl;
       Eigen::Matrix3d M_rb_direct=R*B.transpose();
       std::cout << "M_rb (direct):  "<< std::endl << M_rb_direct << std::endl;
-      auto M_rb=calcPointToward(p_b,p_r,t_b,t_r);
+      auto M_rb=calc(p_b,p_r,t_b,t_r);
       std::cout << "M_rb:  "<< std::endl << M_rb << std::endl;
       std::cout << "M_rb*p_b (should equal p_r):  "<< std::endl << M_rb*p_b << std::endl;
       std::cout << "M_rb*s_b (should equal s_r):  "<< std::endl << M_rb*s_b << std::endl;
@@ -461,63 +407,54 @@ export namespace kwantrace {
    * t_r in the world frame.
    */
   class LocationLookat:public Transformation {
-  private:
+  public:
     Position location; ///< Point vector in world frame
     Position look_at; ///< Point vector in world frame
-    Direction p_b;      ///< Point vector in body frame
-    Direction t_b;      ///< Toward vector in body frame
-    Direction t_r;      ///< Toward vector in world frame
-  public:
+    Direction look_b;      ///< Point vector in body frame
+    Direction sky_b;      ///< Toward vector in body frame
+    Direction sky_r;      ///< Toward vector in world frame
     /** Construct a Location-LookAt transformation
      *
      * @param Llocation Value to copy into location field
      * @param Llook_at Value to copy into look_at field
-     * @param Lp_b Value to copy into p_b field
-     * @param Lt_b Value to copy into t_b field
-     * @param Lt_r Value to copy into t_r field
+     * @param Llook_b Value to copy into p_b field
+     * @param Lsky_b Value to copy into t_b field
+     * @param Lsky_r Value to copy into t_r field
      */
     LocationLookat(
             const Position &Llocation,
             const Position &Llook_at,
-            const Direction& Lp_b=Direction( 0, 0, 1),
-            const Direction& Lt_b=Direction( 0, 1, 0),
-            const Direction& Lt_r=Direction( 0, 0,-1)
-    ):location(Llocation),look_at(Llook_at),p_b(Lp_b), t_b(Lt_b), t_r(Lt_r) {}
-
-    Position getLocation() const                     {return location;} ///<Get copy of p_b vector @return copy of p_b vector
-    void setLocation(const Position& Lloc) {location=Lloc;}    ///<Set p_b vector @param[in] Lloc New location vector
-    Position getLook_at() const                     {return look_at;} ///<Get copy of t_b vector @return copy of t_b vector
-    void setLook_at(const Position& Llook) {look_at=Llook;}    ///<Set t_b vector @param[in] Llook New look vector
-    Direction getPb() const                     {return p_b;} ///<Get copy of p_b vector @return copy of p_b vector
-    void setPb(const Direction& Lpb) {p_b=Lpb;}    ///<Set p_b vector @param[in] Lpb New p_b vector
-    Direction getTb() const                     {return t_b;} ///<Get copy of t_b vector @return copy of t_b vector
-    void setTb(const Direction& Ltb) {p_b=Ltb;}    ///<Set t_b vector @param[in] Ltb New t_b vector
-    Direction getTr() const                     {return t_r;} ///<Get copy of t_r vector @return copy of t_r vector
-    void setTr(const Direction& Ltr) {p_b=Ltr;}    ///<Set t_r vector @param[in] Ltr New t_r vector
+            const Direction& Llook_b=Direction( 0, 0, 1),
+            const Direction& Lsky_b=Direction( 0, 1, 0),
+            const Direction& Lsky_r=Direction( 0, 0,-1)
+    ):location(Llocation),look_at(Llook_at),look_b(Llook_b), sky_b(Lsky_b), sky_r(Lsky_r) {}
 
     /** Creates a matrix which places an object at location and points it at look_at
      *
+     * This is intended to handle camera rotations, but is more flexible -- it enables any direction
+     * in body space to be the "boresight" and any non-collinear other direction to be the "sky".
+     *
      * @param location Location in world frame which body frame origin maps to
      * @param look_at Look-at point in world frame.
-     * @param p_b Primary direction in body frame, will be mapped to direction (look_at-location)
-     * @param t_b Secondary direction in body frame, will be mapped as close as possible to t_r
-     * @param t_r Secondary direction in world frame, referred to as `sky` in POV-Ray. Default value is actually more like
+     * @param look_b Primary direction in body frame, will be mapped to direction (look_at-location)
+     * @param sky_b Secondary direction in body frame, will be mapped as close as possible to sky_r
+     * @param sky_r Secondary direction in world frame, referred to as `sky` in POV-Ray. Default value is actually more like
        * `ground` than `sky`.
      * @return Transformation matrix which does the job
      */
     static Eigen::Matrix4d calc(
       const Position& location,
       const Position& look_at,
-      const Direction& p_b= Direction(0, 0, 1),
-      const Direction& t_b= Direction(0, 1, 0),
-      const Direction& t_r = Direction(0, 0, -1)
+      const Direction& look_b= Direction(0, 0, 1),
+      const Direction& sky_b= Direction(0, 1, 0),
+      const Direction& sky_r = Direction(0, 0, -1)
     ) {
-      Eigen::Matrix4d result= PointToward::calc(p_b, Direction(look_at - location), t_b, t_r); //Use point-toward to point at the target
+      Eigen::Matrix4d result= PointToward::calc(look_b, Direction(look_at - location), sky_b, sky_r); //Use point-toward to point at the target
       result=Translation::calc(location)*result; //Translate back to location
       return result;
     }
     Eigen::Matrix4d matrix() const override {
-      return calc(location, look_at, p_b, t_b, t_r);
+      return calc(location, look_at, look_b, sky_b, sky_r);
     }
   };
 
