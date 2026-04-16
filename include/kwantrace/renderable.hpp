@@ -6,9 +6,9 @@
 #define KWANTRACE26_RENDERABLE_HPP
 
 #include <memory>
-#include "Transformable.h"
-#include "Ray.h"
-#include "Field.h"
+#include "transformable.hpp"
+#include "ray.hpp"
+//#include "Field.h"
 
 namespace kwantrace {
   class Primitive;
@@ -18,25 +18,26 @@ namespace kwantrace {
    */
   class Renderable:public Transformable {
   protected:
-    std::shared_ptr<ColorField> pigment; ///< Pointer to pigment for this object, or nullptr if there isn't one
-    Observer<Renderable> parent=nullptr; ///< Used to find parent object to inherit default properties from
+    // TODO -- pigment should be replaced by proper texture list and interior object
+    //std::unique_ptr<ColorField> pigment; ///< Pointer to pigment for this object, or nullptr if there isn't one
+    const Renderable* parent=nullptr; ///< Used to find parent object to inherit default properties from
   public:
     /** Set a pointer to the parent object. Intended to be used by the
      * prepareRender of container Renderable objects.
      * @param Lparent Parent of this object
      */
-    virtual void setParent(Observer<Renderable> Lparent) {parent=Lparent;}
+    virtual void setParent(const Renderable* Lparent) {parent=Lparent;}
     /** Intersect a ray with this Renderable, in world space. Note that this
      * always returns an observer of a Primitive. This is able to see down through
      * an arbitrarily large tree of Composite Renderables to pick out the actual
      * visible surface geometry.
      *
      * @param[in] ray Ray in world space
-     * @return              Pointer to Primitive if ray intersects      * @param[out] t Ray parameter of intersection
-, nullptr if not.
+     * @return              Pointer to Primitive if ray intersects, nullptr if not.
+     * @param[out] t Ray parameter of intersection
      *                         Output parameter t is unspecified if function returns false
      */
-    virtual Observer<Primitive> intersect(const Ray &ray,double& t) const=0;
+    virtual const Primitive* intersect(const Ray &ray,double& t) const=0;
     /** Determine if the given point is inside the Renderable
      * @return True if point is inside, false if not.
      */
@@ -47,9 +48,9 @@ namespace kwantrace {
      * and the Renderable is treated as having no pigment.
      * @param Lpigment Pigment to use. May be a nullptr.
      */
-    void setPigment(std::shared_ptr<ColorField> Lpigment) {
-      pigment = Lpigment;
-    }
+    //void setPigment(std::shared_ptr<ColorField> Lpigment) {
+    //  pigment = Lpigment;
+    //}
     /** Evaluate the intrinsic color of this object at a point
      * @return True if color is evaluated, false if not
      */
@@ -57,26 +58,20 @@ namespace kwantrace {
       const Position& r, ///< Position to evaluate the color at
       ObjectColor& color ///< Color at this point, if any. Unspecified if function returns false.
     ) const {
-      if(pigment) {
-        color=(*pigment)(r);
-        return true;
-      } else if(parent) {
-        return parent->evalPigment(r,color);
-      } else {
-        return false;
-      }
+    //  if(pigment) {
+    //    color=(*pigment)(r);
+    //    return true;
+    //  } else if(parent) {
+    //    return parent->evalPigment(r,color);
+    //  } else {
+    //    return false;
+    //  }
     }
     /** Add a transformation to this Renderable. Also adds the transformation
      * to the Renderable object's pigment, if any
      */
-    virtual void add(
-      std::shared_ptr<Transformation> transform ///< Transformation to add
-    ) override {
-      Transformable::add(transform);
-      if(pigment) {
-        pigment->add(transform);
-      }
-    }
+    using Transformable::transform;
+    using Transformable::prepareRender;
     /**Prepare an object for rendering. This must be called
      * between any change to the object and rendering the object
      *
@@ -85,13 +80,13 @@ namespace kwantrace {
      */
     virtual void prepareRender() override {
       Transformable::prepareRender();
-      if(pigment) {
-        pigment->prepareRender();
-      }
+      //if(pigment) {
+      //  pigment->prepareRender();
+      //}
     }
   };
 
-  typedef std::vector<std::shared_ptr<Renderable>> RenderableList; ///< Alias for list of renderables
+  using RenderableList=std::vector<std::unique_ptr<Renderable>>; ///< Alias for list of renderables
 
   /** Primitive object -- IE one that directly has geometry itself, rather than being a composite of other
    * renderables. Subclasses of this only need to deal with local coordinates.
@@ -247,7 +242,7 @@ namespace kwantrace {
      * are really just CSG intersection with inside-out objects.*/
     bool inside_out=false;
     virtual ~Primitive() {};
-    virtual Observer<Primitive> intersect(const Ray &ray, double& t) const override {
+    virtual const Primitive* intersect(const Ray &ray, double& t) const override {
       if (intersectLocal(Mbw * ray, t)) {
         return this;
       } else {
@@ -357,10 +352,10 @@ namespace kwantrace {
       return inside_out ^ insideLocal(Mbw * r);
     }
   };
-
 }
 
-#include "Sphere.h"
-#include "Plane.h"
+/// These ARE NOT special, just included by default (or will be, once written)
+//#include "Sphere.h"
+//#include "Plane.h"
 
 #endif //KWANTRACE26_RENDERABLE_HPP
